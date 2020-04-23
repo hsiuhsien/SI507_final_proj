@@ -8,15 +8,16 @@ import requests
 import json
 import secrets # file that contains your API key
 import sqlite3
+import plotly.graph_objects as go 
 
 # Cache variables
 CACHE_FILE_NAME = 'cache.json'
 CACHE_DICT = {}
 
 # Database variables
-DBNAME = 'yelpcafe.sqlite'
-conn = sqlite3.connect(DBNAME)
-cur = conn.cursor()
+#DBNAME = 'yelpcafe.sqlite'
+#conn = sqlite3.connect(DBNAME)
+#cur = conn.cursor()
 
 # API variables
 API_HOST = 'https://api.yelp.com'
@@ -24,6 +25,7 @@ SEARCH_PATH = '/v3/businesses/search'
 
 # Cafe Instance
 class Cafe:
+    
     def __init__(self, id, yelpid, name, rating, numberofreviews, state, city, fulladdress, zipcode, phonenumber, yelpurl):
         self.id = id
         self.yelpid = yelpid
@@ -39,6 +41,7 @@ class Cafe:
 
 # Category Instance
 class Category:
+    
     def __init__(self, id, title, alias):
         self.id = id
         self.title = title
@@ -50,68 +53,77 @@ def load_cache():
         cache_file_contents = cache_file.read()
         cache = json.loads(cache_file_contents)
         cache_file.close()
+        
+        for city in cache.keys():
+            for index, item in enumerate(cache[city]):
+                # Convert dict to Cafe object
+                instance = object.__new__(Cafe)
+                for key, value in item.items():
+                    setattr(instance, key, value)
+                cache[city][index] = instance
+        return cache
     except:
         cache = {}
     return cache
 
-def save_cache(cache): # called whenever the cache is changed
+def save_cache(cache):
     cache_file = open(CACHE_FILE_NAME, 'w')
-    contents_to_write = json.dumps(cache)
+    # Convert object to dict
+    contents_to_write = json.dumps(cache, default=lambda x: x.__dict__)
     cache_file.write(contents_to_write)
     cache_file.close()
 
 # Load the cache, save in global variable
 CACHE_DICT = load_cache()
 
-# Create Database
-def create_db_table():
-    conn = sqlite3.connect("yelpcafe.sqlite")
-    cur = conn.cursor()
+#Create DB tables
+conn = sqlite3.connect("yelpcafe.sqlite")
+cur = conn.cursor()
 
-    drop_cafe = 'DROP TABLE IF EXISTS "Cafe"'
-    drop_category = 'DROP TABLE IF EXISTS "Category"'
-    drop_cafe_category = 'DROP TABLE IF EXISTS "Cafe_Category"'
+drop_cafe = 'DROP TABLE IF EXISTS "Cafe"'
+drop_category = 'DROP TABLE IF EXISTS "Category"'
+drop_cafe_category = 'DROP TABLE IF EXISTS "Cafe_Category"'
 
-    create_cafe = '''
-        CREATE TABLE IF NOT EXISTS "Cafe" (
-            "Id"                INTEGER PRIMARY KEY AUTOINCREMENT UNIQUE,
-            "YelpId"            TEXT NOT NULL,
-            "Name"              TEXT NOT NULL,
-            "Rating"            REAL,
-            "NumberOfReviews"   INTEGER,
-            "State"             TEXT,
-            "City"              TEXT,
-            "FullAddress"       TEXT,
-            "ZipCode"           INTEGER,
-            "PhoneNumber"       TEXT,
-            "YelpURL"           TEXT
-        );
-    '''
-    create_category = '''
-        CREATE TABLE IF NOT EXISTS "Category" (
-            "Id"                INTEGER PRIMARY KEY AUTOINCREMENT UNIQUE,
-            "Title"             TEXT NOT NULL,
-            "Alias"             TEXT NOT NULL
-        );
-    '''
-    create_cafe_category = '''
-        CREATE TABLE IF NOT EXISTS "Cafe_Category" (
-            "CafeId"            INTEGER NOT NULL,
-            "CategoryId"        INTEGER NOT NULL,
-            FOREIGN KEY(CafeId) REFERENCES Cafe(Id)
-            FOREIGN KEY(CategoryId) REFERENCES Category(Id)
-        );
-    '''
+create_cafe = '''
+    CREATE TABLE IF NOT EXISTS "Cafe" (
+        "Id"                INTEGER PRIMARY KEY AUTOINCREMENT UNIQUE,
+        "YelpId"            TEXT NOT NULL,
+        "Name"              TEXT NOT NULL,
+        "Rating"            REAL,
+        "NumberOfReviews"   INTEGER,
+        "State"             TEXT,
+        "City"              TEXT,
+        "FullAddress"       TEXT,
+        "ZipCode"           INTEGER,
+        "PhoneNumber"       TEXT,
+        "YelpURL"           TEXT
+    );
+'''
+create_category = '''
+    CREATE TABLE IF NOT EXISTS "Category" (
+        "Id"                INTEGER PRIMARY KEY AUTOINCREMENT UNIQUE,
+        "Title"             TEXT NOT NULL,
+        "Alias"             TEXT NOT NULL
+    );
+'''
+create_cafe_category = '''
+    CREATE TABLE IF NOT EXISTS "Cafe_Category" (
+        "CafeId"            INTEGER NOT NULL,
+        "CategoryId"        INTEGER NOT NULL,
+        FOREIGN KEY(CafeId) REFERENCES Cafe(Id)
+        FOREIGN KEY(CategoryId) REFERENCES Category(Id)
+    );
+'''
 
-    cur.execute(drop_cafe)
-    cur.execute(drop_category)
-    cur.execute(drop_cafe_category)
+cur.execute(drop_cafe)
+cur.execute(drop_category)
+cur.execute(drop_cafe_category)
 
-    cur.execute(create_cafe)
-    cur.execute(create_category)
-    cur.execute(create_cafe_category)
+cur.execute(create_cafe)
+cur.execute(create_category)
+cur.execute(create_cafe_category)
 
-    conn.commit()
+conn.commit()
 
 # Insert data to given table
 def insertDataToDB(table, data):
@@ -129,11 +141,11 @@ def insertDataToDB(table, data):
 
 # Gets Category with given Alias
 def getCategoryByAlias(alias):
-    query = f''' 
-            SELECT Id, Title, Alias 
-            FROM Category 
-            WHERE Alias = "{0}"
-            '''
+    query = f'''
+        SELECT Id, Title, Alias 
+        FROM Category 
+        WHERE Alias = "{alias}"
+        '''
     result = cur.execute(query).fetchone()
     if result != None:
         return Category(result[0], result[1], result[2])
@@ -201,7 +213,7 @@ def request(url_params=None):
     url_params = url_params or {}
     url = '{0}{1}'.format(API_HOST, SEARCH_PATH)
     headers = {
-        'Authorization': secrets.API_KEY,
+        'Authorization': 'Bearer %s' % secrets.API_KEY,
     }
     response = requests.request('GET', url, headers=headers, params=url_params)
     return response.json()
@@ -210,6 +222,7 @@ def request(url_params=None):
 # Process results and store each item in the database
 # Returns top 10 result to be stored in the cache
 def searchByLocation(location):
+    # Request parameters
     url_params = {
         'categories': 'coffee',
         'location': location.replace(' ', '+'),
@@ -218,6 +231,7 @@ def searchByLocation(location):
     }
     results = request(url_params)
     cafes = insertCafes(results.get('businesses'))
+    # return first 10
     return cafes[:10]
 
 # Checks cache to see if give location has been processed before
@@ -225,23 +239,126 @@ def make_request_using_cache(location):
     if location in CACHE_DICT.keys():
         return CACHE_DICT[location]
     else:
+        # Saves top 10 cafes at given location to the cache
         data = searchByLocation(location)
         CACHE_DICT[location] = data
         save_cache(CACHE_DICT)
         return data
 
+def print_format(result):
+    
+    row = "{i:6} {name:<20} {rating:<8} {numberofreviews:<6}".format
+
+    for i in range(len(result)):
+        shortenedName = result[i].name
+        if len(result[i].name) > 15:
+            shortenedName = result[i].name[:15]+'...'
+        print(row(i='['+str(i+1)+']', name=shortenedName, rating=result[i].rating, numberofreviews=result[i].numberofreviews))
+        i = i+1
+
+def print_detail(shop):
+    detail_list = [('Shop Name:', shop.name), ('Rating:', shop.rating), ('Number of Reviews:', shop.numberofreviews), ('Address:', shop.fulladdress), ('Phone Number:', shop.phonenumber), ('Yelp URL:', shop.yelpurl)]
+
+    row = "{Headers:<20} {contect:<15}".format
+
+    for r in detail_list:
+        print(row(Headers=r[0], contect=r[1]))
+
+def rating_barplot(result):
+    xvals_list = []
+    yvals_list = []
+    for list in result:
+        shop = list.name
+        xvals_list.append(shop)
+        rating = list.rating
+        yvals_list.append(rating)
+
+    xvals = xvals_list
+    yvals = yvals_list
+
+    bar_data = go.Bar(x=xvals, y=yvals)
+    basic_layout = go.Layout(title="Comparison of Cafe Rating")
+    fig = go.Figure(data=bar_data, layout=basic_layout)
+
+    fig.show()
+
+def numberofreviews_barplot(result):
+    xvals_list = []
+    yvals_list = []
+    for list in result:
+        shop = list.name
+        xvals_list.append(shop)
+        numberofreviews = list.numberofreviews
+        yvals_list.append(numberofreviews)
+
+    xvals = xvals_list
+    yvals = yvals_list
+
+    bar_data = go.Bar(x=xvals, y=yvals)
+    basic_layout = go.Layout(title="Comparison of Cafe Number of Reviews")
+    fig = go.Figure(data=bar_data, layout=basic_layout)
+
+    fig.show()
+
+states = ["AL", "AK", "AZ", "AR", "CA", "CO", "CT", "DC", "DE", "FL", "GA", 
+          "HI", "ID", "IL", "IN", "IA", "KS", "KY", "LA", "ME", "MD", 
+          "MA", "MI", "MN", "MS", "MO", "MT", "NE", "NV", "NH", "NJ", 
+          "NM", "NY", "NC", "ND", "OH", "OK", "OR", "PA", "RI", "SC", 
+          "SD", "TN", "TX", "UT", "VT", "VA", "WA", "WV", "WI", "WY"]
+
 def main():
     while True:
         # Gets user input of location
-        location = input('Enter a city, state (e.g. San Francisco, CA or Ann Arbor, MI) or "exit" \n: ')
+        location = input('Enter a city, state (e.g. San Francisco, CA or Ann Arbor, MI) or "exit" :\n')
 
         if location.lower() == "exit":
             exit()
         else:
-            top10 = make_request_using_cache(location.lower())
-            for item in top10:
-                print('{0} ({1})'.format(item.name, item.rating))
-
+            location_state = location.split(",")[1].replace(" ", "").upper()
+            if location_state in states:
+                top10 = make_request_using_cache(location.lower())
+                headline = ["Number", "Name", "Rating", "Number of Reviews"]
+                row = "{number:<6} {name:<20} {rating:<8} {numberofreviews:<6}".format
+                print ("--------------------------------------------------------")
+                print (f"List of Top 10 Cafe in {location}")
+                print ("--------------------------------------------------------")
+                print(row(number= headline[0], name=headline[1], rating=headline[2], numberofreviews=headline[3]))
+                shop_list = sorted(top10, key=lambda item: item.rating, reverse=True)
+                print_format(shop_list)
+                print ("--------------------------------------------------------")
+                #for item in top10:
+                #    print('{0} ({1}) {2}'.format(item.name, item.rating, item.numberofreviews))
+                while True:
+                    detail = input('Choose the number for detail search or input "barchart" to see the comparison (or "exit"/"back") :\n')
+                    if detail.isnumeric() and int(detail) != 0 and int(detail) <= 10: 
+                        site_detail = shop_list[int(detail) - 1]
+                        site_name = site_detail.name
+                        print("--------------------------------------------------------")
+                        print("Detail information of " + site_name + " :") 
+                        print("--------------------------------------------------------")
+                        print_detail(site_detail)
+                        print("--------------------------------------------------------")
+                    elif detail.lower() == "back": 
+                        break 
+                    elif detail.lower() == "exit":
+                        exit()
+                    elif detail.lower() == "barchart":
+                        print("--------------------------------------------------------")
+                        option = input("Choose the number for comparison type\n1. Rating\n2. Number of Reviews\n:")
+                        if int(option) == 1:
+                            rating_barplot(shop_list)
+                            print("--------------------------------------------------------")
+                            continue
+                        elif int(option) == 2:
+                            numberofreviews_barplot(shop_list)
+                            print("--------------------------------------------------------")
+                            continue
+                    else:
+                        print("[Error] Invalid input\n")
+            else:
+                print("[Error] Invalid input\n")
+                continue
+            
                 
 if __name__ == '__main__':
     main()
