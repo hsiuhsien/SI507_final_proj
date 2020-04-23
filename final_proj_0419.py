@@ -14,11 +14,6 @@ import plotly.graph_objects as go
 CACHE_FILE_NAME = 'cache.json'
 CACHE_DICT = {}
 
-# Database variables
-#DBNAME = 'yelpcafe.sqlite'
-#conn = sqlite3.connect(DBNAME)
-#cur = conn.cursor()
-
 # API variables
 API_HOST = 'https://api.yelp.com'
 SEARCH_PATH = '/v3/businesses/search'
@@ -56,7 +51,6 @@ def load_cache():
         
         for city in cache.keys():
             for index, item in enumerate(cache[city]):
-                # Convert dict to Cafe object
                 instance = object.__new__(Cafe)
                 for key, value in item.items():
                     setattr(instance, key, value)
@@ -68,7 +62,6 @@ def load_cache():
 
 def save_cache(cache):
     cache_file = open(CACHE_FILE_NAME, 'w')
-    # Convert object to dict
     contents_to_write = json.dumps(cache, default=lambda x: x.__dict__)
     cache_file.write(contents_to_write)
     cache_file.close()
@@ -76,7 +69,7 @@ def save_cache(cache):
 # Load the cache, save in global variable
 CACHE_DICT = load_cache()
 
-#Create DB tables
+#Create DB file and tables
 conn = sqlite3.connect("yelpcafe.sqlite")
 cur = conn.cursor()
 
@@ -189,7 +182,6 @@ def insertCafes(cafes):
     for c in cafes:
         cafe = getCafeByYelpId(c['id'])
         if cafe == None:
-            # Only need to do inserts if Cafe hasn't been added to database before
             yelpid = c['id']
             name = c['name']
             rating = c['rating']
@@ -219,10 +211,7 @@ def request(url_params=None):
     return response.json()
 
 # Searches for coffee shops at given location
-# Process results and store each item in the database
-# Returns top 10 result to be stored in the cache
 def searchByLocation(location):
-    # Request parameters
     url_params = {
         'categories': 'coffee',
         'location': location.replace(' ', '+'),
@@ -239,12 +228,12 @@ def make_request_using_cache(location):
     if location in CACHE_DICT.keys():
         return CACHE_DICT[location]
     else:
-        # Saves top 10 cafes at given location to the cache
         data = searchByLocation(location)
         CACHE_DICT[location] = data
         save_cache(CACHE_DICT)
         return data
 
+# Format the printed result
 def print_format(result):
     
     row = "{i:6} {name:<20} {rating:<8} {numberofreviews:<6}".format
@@ -256,6 +245,7 @@ def print_format(result):
         print(row(i='['+str(i+1)+']', name=shortenedName, rating=result[i].rating, numberofreviews=result[i].numberofreviews))
         i = i+1
 
+# Format the cafe detail data
 def print_detail(shop):
     detail_list = [('Shop Name:', shop.name), ('Rating:', shop.rating), ('Number of Reviews:', shop.numberofreviews), ('Address:', shop.fulladdress), ('Phone Number:', shop.phonenumber), ('Yelp URL:', shop.yelpurl)]
 
@@ -264,6 +254,7 @@ def print_detail(shop):
     for r in detail_list:
         print(row(Headers=r[0], contect=r[1]))
 
+# Creat plotly bar chart for rating
 def rating_barplot(result):
     xvals_list = []
     yvals_list = []
@@ -282,6 +273,7 @@ def rating_barplot(result):
 
     fig.show()
 
+# Creat plotly bar chart for number of reviews
 def numberofreviews_barplot(result):
     xvals_list = []
     yvals_list = []
@@ -300,6 +292,7 @@ def numberofreviews_barplot(result):
 
     fig.show()
 
+# List of US states
 states = ["AL", "AK", "AZ", "AR", "CA", "CO", "CT", "DC", "DE", "FL", "GA", 
           "HI", "ID", "IL", "IN", "IA", "KS", "KY", "LA", "ME", "MD", 
           "MA", "MI", "MN", "MS", "MO", "MT", "NE", "NV", "NH", "NJ", 
@@ -308,7 +301,6 @@ states = ["AL", "AK", "AZ", "AR", "CA", "CO", "CT", "DC", "DE", "FL", "GA",
 
 def main():
     while True:
-        # Gets user input of location
         location = input('Enter a city, state (e.g. San Francisco, CA or Ann Arbor, MI) or "exit" :\n')
 
         if location.lower() == "exit":
@@ -326,8 +318,6 @@ def main():
                 shop_list = sorted(top10, key=lambda item: item.rating, reverse=True)
                 print_format(shop_list)
                 print ("--------------------------------------------------------")
-                #for item in top10:
-                #    print('{0} ({1}) {2}'.format(item.name, item.rating, item.numberofreviews))
                 while True:
                     detail = input('Choose the number for detail search or input "barchart" to see the comparison (or "exit"/"back") :\n')
                     if detail.isnumeric() and int(detail) != 0 and int(detail) <= 10: 
