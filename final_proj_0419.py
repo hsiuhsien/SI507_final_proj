@@ -301,7 +301,7 @@ states = ["AL", "AK", "AZ", "AR", "CA", "CO", "CT", "DC", "DE", "FL", "GA",
 
 def main():
     while True:
-        location = input('Enter a city, state (e.g. San Francisco, CA or Ann Arbor, MI) or "exit" :\n')
+        location = input('Enter a city, state (e.g. San Francisco, CA or Ann Arbor, MI) to view the Top 10 Cafe or "exit" :\n')
 
         if location.lower() == "exit":
             exit()
